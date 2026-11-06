@@ -1,10 +1,14 @@
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
+from rest_framework.exceptions import NotAuthenticated, NotFound, PermissionDenied
 
+from apps.landing.error_messages import ERROR_COPY, ERROR_MESSAGES
 from apps.landing.models import LandingFeature, LandingPage, LandingTestimonial, Tone
+from apps.landing.services import LandingPageService
 
 LANDING = 'landing:landing-page'
 
@@ -109,6 +113,32 @@ class LandingPageApiTests(TestCase):
         response = self.client.get(reverse(LANDING), HTTP_AUTHORIZATION='Bearer not-a-jwt')
 
         self.assertEqual(response.status_code, 200)
+
+    def test_the_page_does_not_carry_the_error_messages(self):
+        self.assertNotIn('errors', self.fetch())
+
+    def test_the_errors_the_endpoint_raises_itself_use_the_documented_code_and_message(self):
+        post = self.client.post(reverse(LANDING))
+        xml = self.client.get(reverse(LANDING), HTTP_ACCEPT='application/xml')
+
+        for response, status in ((post, 405), (xml, 406)):
+            with self.subTest(status=status):
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(
+                    response.json(),
+                    {'error': {'code': ERROR_COPY[status].code, 'message': ERROR_MESSAGES[status], 'fields': {}}},
+                )
+
+    def test_an_error_raised_later_is_worded_the_documented_way(self):
+        # DRF answers 403 instead of 401 here: the view has no authenticator to challenge the client with.
+        raised = [(PermissionDenied, 403), (NotAuthenticated, 403), (NotFound, 404)]
+
+        for error, status in raised:
+            with self.subTest(error=error.__name__), patch.object(LandingPageService, 'get_content', side_effect=error()):
+                response = self.client.get(reverse(LANDING))
+
+                self.assertEqual(response.status_code, status)
+                self.assertEqual(response.json()['error']['message'], ERROR_MESSAGES[status])
 
 
 class SeedLandingTests(TestCase):

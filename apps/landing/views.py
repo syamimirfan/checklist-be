@@ -1,8 +1,9 @@
-from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
 from apps.core.views import PublicAPIView
 
+from . import docs
+from .error_messages import ERROR_MESSAGES
 from .serializers import LandingPageSerializer
 from .services import LandingPageService
 
@@ -12,13 +13,14 @@ class LandingPageView(PublicAPIView):
 
     service = LandingPageService()
 
-    @extend_schema(
-        summary='Get the landing page content',
-        description=(
-            'Everything the landing page shows: header buttons, hero, features, testimonials and the closing '
-            'call to action. Unpublished features and testimonials are left out.'
-        ),
-        responses=LandingPageSerializer,
-    )
+    @docs.landing_page
     def get(self, request):
         return Response(LandingPageSerializer(self.service.get_content()).data)
+
+    def handle_exception(self, exc):
+        """Word the error the way the landing page documents it (see `error_messages.py`)."""
+        response = super().handle_exception(exc)
+        message = ERROR_MESSAGES.get(response.status_code)
+        if message:
+            response.data['error']['message'] = message
+        return response

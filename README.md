@@ -202,9 +202,11 @@ checklist-be/
     │   └── tests/
     └── landing/           # The public landing page, served from the database
         ├── models.py      #   LandingPage (copy), LandingFeature, LandingTestimonial
+        ├── error_messages.py  # the message and code for each HTTP error the endpoint can return (constants)
         ├── services.py    #   LandingPageService assembles the page
         ├── serializers.py #   the JSON shape
         ├── views.py, urls.py   # GET /api/landing/
+        ├── docs.py        #   what Swagger shows for the endpoint, including every error status
         ├── admin.py       #   edit the copy, reorder and publish items
         ├── management/commands/seed_landing.py   # seeds the starter content
         ├── management/commands/_constants.py     # the starter features and testimonials
@@ -333,6 +335,24 @@ features**, **Landing testimonials**) without a deploy. Items are ordered by `po
 `is_published` is off. `tone` is one of `violet`, `purple`, `fuchsia`, `pink`, `rose` (the frontend's `ToneName`).
 Before anything is saved the endpoint serves the default copy, which is the text the frontend used to hard-code.
 `python manage.py seed_landing` loads the starter features and testimonials; it never overwrites existing content.
+
+The 200 response above holds only the page content. The error messages are in the error responses, which use the usual
+`{"error": {"code", "message", "fields"}}` body (see [Errors](#errors)). There are six, with a fixed wording that is not
+stored in the database. The endpoint is public and read-only, so it raises only three of them itself; the other three are
+documented so the frontend knows their wording:
+
+| Status | `code`               | Message                                                  | Raised by this endpoint?                                                                          |
+| ------ | -------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 401    | `not_authenticated`  | You need to sign in to continue.                         | no: it needs no sign-in, and a bad token still gets the page. DRF would answer 403, not 401, since the view has no authenticator |
+| 403    | `permission_denied`  | You don't have permission to do that.                    | no: the endpoint is open to everyone, so there is no permission to check                          |
+| 404    | `not_found`          | We couldn't find what you were looking for.              | no: the URL always exists (a missing trailing slash is a 301 redirect)                            |
+| 405    | `method_not_allowed` | That action isn't supported here.                        | yes: any method other than GET, HEAD or OPTIONS                                                   |
+| 406    | `not_acceptable`     | We can't send the response in the format your app asked for. | yes: an `Accept` header the JSON response cannot satisfy (for example `application/xml`)      |
+| 500    | `server_error`       | Something went wrong on our side. Please try again later. | yes: something unexpected, such as the database being down; Django answers with its own page, not the JSON body, so the message is only in Swagger |
+
+The messages are constants in [apps/landing/error_messages.py](apps/landing/error_messages.py): change the wording there
+and deploy. The view puts them into its real error responses, and Swagger documents the same six statuses from the same
+table. To add another status, add it to that file.
 
 ### Authentication
 

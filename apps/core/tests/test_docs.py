@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from apps.authentication.exceptions import EmailAlreadyRegisteredError, WeakPasswordError
 from apps.core.api_docs import VALIDATION_FAILED, DocumentedError, error_responses
+from apps.landing.error_messages import ERROR_COPY
 
 ENDPOINTS = {
     ('/api/landing/', 'get'),
@@ -68,6 +69,23 @@ class ApiDocsTests(TestCase):
             },
         )
         self.assertEqual(set(signup), {'201', '400', '409', '429'})
+
+    def test_the_landing_endpoint_documents_every_error_status_with_its_message(self):
+        landing = self.schema()['paths']['/api/landing/']['get']['responses']
+
+        self.assertEqual(set(landing), {'200', '401', '403', '404', '405', '406', '500'})
+        for status, copy in ERROR_COPY.items():
+            with self.subTest(status=status):
+                (example,) = landing[str(status)]['content']['application/json']['examples'].values()
+                self.assertEqual(
+                    example['value'],
+                    {'error': {'code': copy.code, 'message': copy.message, 'fields': {}}},
+                )
+
+    def test_the_landing_success_response_does_not_include_the_error_messages(self):
+        landing_page = self.schema()['components']['schemas']['LandingPage']
+
+        self.assertEqual(set(landing_page['properties']), {'header', 'hero', 'features', 'testimonials', 'cta'})
 
     def test_the_swagger_page_is_served_from_the_installed_package(self):
         page = self.client.get(reverse('swagger-ui'))
